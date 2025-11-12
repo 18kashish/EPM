@@ -561,7 +561,7 @@ export default function Invoice() {
                 <span>Subtotal</span> <b>{subtotal.toFixed(2)}</b>
               </div>
               <div className="flex justify-between mb-2 text-gray-600">
-                <span>GST ({invoice.taxRate}%)</span> <b>-{gst.toFixed(2)}</b>
+                <span>GST ({invoice.taxRate}%)</span> <b>{gst.toFixed(2)}</b>
               </div>
               <div className="flex justify-between text-lg font-semibold text-gray-800">
                 <span>Total (After GST)</span>
