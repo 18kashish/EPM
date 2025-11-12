@@ -506,6 +506,7 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import Div from "./Div";
 import { ArrowUpDown } from "lucide-react";
+import jsPDF from "jspdf";
 
 export default function Dashboard() {
   const [invoices, setInvoices] = useState([]);
@@ -513,14 +514,20 @@ export default function Dashboard() {
   const [sortOrder, setSortOrder] = useState("desc");
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
-
   const [showModal, setShowModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
 
   const userId = localStorage.getItem("userId");
   const navigate = useNavigate();
 
-  // Fetch invoices
+  // 🖼️ Logos
+  const companyLogos = {
+    TAS: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRALHKUOmkKn3hiy3rSCE0ZjWhK_dDFoD_xbg&s",
+    Avsar: "https://avsar.digital/wp-content/uploads/2024/08/Avsar-logo.png",
+    XYZ: "https://upload.wikimedia.org/wikipedia/commons/d/d8/Placeholder_logo.png",
+  };
+
+  // 🔹 Fetch invoices
   useEffect(() => {
     const fetchInvoices = async () => {
       try {
@@ -539,10 +546,9 @@ export default function Dashboard() {
     if (userId) fetchInvoices();
   }, [userId]);
 
-  // Filtering, Searching, Sorting
+  // 🔹 Filter + Sort + Search
   const filteredInvoices = useMemo(() => {
     if (!Array.isArray(invoices)) return [];
-
     let data = [...invoices];
 
     if (searchTerm.trim()) {
@@ -568,54 +574,138 @@ export default function Dashboard() {
     return data;
   }, [invoices, searchTerm, filterStatus, sortOrder]);
 
-  const totalAmount = filteredInvoices.reduce((acc, curr) => acc + (curr.total || 0), 0);
-  const paidInvoices = filteredInvoices.filter((i) => i.status?.toLowerCase() === "paid").length;
+  const totalAmount = filteredInvoices.reduce(
+    (acc, curr) => acc + (curr.total || 0),
+    0
+  );
+  const paidInvoices = filteredInvoices.filter(
+    (i) => i.status?.toLowerCase() === "paid"
+  ).length;
 
-  // === Modal Handlers ===
+  // 🔹 Helpers
   const handleViewInvoice = (id) => {
     const invoice = invoices.find((inv) => inv._id === id);
     setSelectedInvoice(invoice);
     setShowModal(true);
   };
 
+  // Convert remote logo to Base64 for jsPDF
+  const getBase64ImageFromURL = async (url) => {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  // 🧾 Download PDF
   const handleDownloadPDF = async (id) => {
-  try {
-    const response = await axios.get(
-      `https://invoice-module-dx9o.onrender.com/invoices/${id}`,
-      { responseType: "blob" } // important to receive file as blob
+    const invoice = invoices.find((inv) => inv._id === id);
+    if (!invoice) return alert("Invoice not found");
+
+    const doc = new jsPDF();
+
+    // Logo
+    const company = invoice.company || "TAS";
+    const companyLogo = companyLogos[company] || companyLogos["XYZ"];
+    const logoBase64 = await getBase64ImageFromURL(companyLogo);
+    doc.addImage(logoBase64, "PNG", 150, 10, 40, 20);
+
+    // Header
+    doc.setFontSize(22);
+    doc.text("Invoice", 20, 20);
+
+    // Company Info
+    doc.setFontSize(11);
+    doc.text("Marketing Agency", 20, 35);
+    doc.text("John Doe", 20, 42);
+    doc.text("www.company.com", 20, 49);
+    doc.text("2 Canal Park, Cambridge, MA", 20, 56);
+    doc.text("888-999-1111", 20, 63);
+    doc.text("example@company.com", 20, 70);
+
+    // Client Info
+    doc.text("Bill To:", 20, 85);
+    doc.text(invoice.client?.name || "Client Name", 20, 92);
+    doc.text(invoice.client?.address || "Client Address", 20, 99);
+    doc.text(invoice.client?.email || "client@email.com", 20, 106);
+
+    // Invoice details
+    doc.text(`Invoice No: ${invoice._id}`, 140, 85);
+    doc.text(
+      `Invoice Date: ${
+        invoice.createdAt
+          ? new Date(invoice.createdAt).toLocaleDateString()
+          : "N/A"
+      }`,
+      140,
+      92
+    );
+    doc.text(
+      `Due Date: ${
+        invoice.dueDate
+          ? new Date(invoice.dueDate).toLocaleDateString()
+          : "N/A"
+      }`,
+      140,
+      99
     );
 
-    // Create a blob link to download
-    const url = window.URL.createObjectURL(new Blob([response.data]));
-    const link = document.createElement("a");
-    link.href = url;
+    // Table Header
+    doc.setFillColor(40, 40, 40);
+    doc.setTextColor(255, 255, 255);
+    doc.rect(20, 120, 170, 10, "F");
+    doc.text("ID", 25, 127);
+    doc.text("Description", 55, 127);
+    doc.text("Quantity", 130, 127);
+    doc.text("Price", 165, 127);
 
-    // Optionally, set a file name
-    link.setAttribute("download", `invoice_${id}.pdf`);
+    // Table Body
+    doc.setTextColor(0, 0, 0);
+    doc.rect(20, 130, 170, 15);
+    doc.text("01", 25, 139);
+    doc.text(invoice.description || "Service / Product", 55, 139);
+    doc.text("1", 135, 139);
+    doc.text(`${invoice.total?.toFixed(2) || "0.00"}`, 165, 139, {
+      align: "right",
+    });
 
-    // Append to body and trigger click
-    document.body.appendChild(link);
-    link.click();
+    // Summary
+    const subtotal = invoice.total || 0;
+    const tax = subtotal * 0.18; // 18% tax
+    const total = subtotal + tax;
 
-    // Clean up
-    link.parentNode.removeChild(link);
-    window.URL.revokeObjectURL(url);
-  } catch (err) {
-    console.error("PDF download failed:", err);
-    alert("Failed to download PDF.");
-  }
-};
+    doc.text(`Subtotal: ₹${subtotal.toFixed(2)}`, 140, 165);
+    doc.text(`Tax (18%): ₹${tax.toFixed(2)}`, 140, 172);
+    doc.text(`Total: ₹${total.toFixed(2)}`, 140, 179);
 
+    // Notes
+    doc.rect(20, 160, 100, 30);
+    doc.text("Notes:", 25, 168);
+    doc.text(invoice.notes || "Any additional comments...", 25, 176);
 
-  const handleUpdateInvoice = (id) => {
-    // Navigate to edit page
-    navigate(`/edit-invoice/${id}`);
+    // Footer
+    doc.setFontSize(9);
+    doc.text(
+      "This invoice was created using the HubSpot-style Invoice Generator",
+      20,
+      200
+    );
+
+    // Save
+    doc.save(`invoice_${invoice._id}.pdf`);
   };
+
+  const handleUpdateInvoice = (id) => navigate(`/edit-invoice/${id}`);
 
   const handleDeleteInvoice = async (id) => {
     if (!window.confirm("Are you sure you want to delete this invoice?")) return;
     try {
-      await axios.delete(`https://invoice-module-dx9o.onrender.com/invoices/${id}`);
+      await axios.delete(
+        `https://invoice-module-dx9o.onrender.com/invoices/${id}`
+      );
       setInvoices((prev) => prev.filter((inv) => inv._id !== id));
       setShowModal(false);
       alert("Invoice deleted successfully!");
@@ -628,7 +718,9 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-500 text-xl animate-pulse">Loading invoices...</p>
+        <p className="text-gray-500 text-xl animate-pulse">
+          Loading invoices...
+        </p>
       </div>
     );
   }
@@ -638,7 +730,7 @@ export default function Dashboard() {
       <Div title={"Invoice Dashboard"} />
       <div className="flex bg-gray-50 min-h-screen">
         <div className="flex-1 p-8">
-          {/* Filters and Search */}
+          {/* Filters */}
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-3xl font-bold text-gray-800">Invoices</h1>
             <div className="flex gap-2">
@@ -651,9 +743,12 @@ export default function Dashboard() {
               />
               <button
                 className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-xl hover:bg-blue-200 transition-all"
-                onClick={() => setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))}
+                onClick={() =>
+                  setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))
+                }
               >
-                <ArrowUpDown size={18} /> Sort: {sortOrder === "asc" ? "Low → High" : "High → Low"}
+                <ArrowUpDown size={18} /> Sort:{" "}
+                {sortOrder === "asc" ? "Low → High" : "High → Low"}
               </button>
               <select
                 className="border px-3 py-2 rounded-xl shadow-sm text-gray-700 focus:ring-2 focus:ring-blue-400"
@@ -677,11 +772,15 @@ export default function Dashboard() {
             </div>
             <div className="flex flex-col items-center text-center">
               <h3 className="text-gray-600 font-semibold">Paid Invoices</h3>
-              <p className="text-2xl font-bold text-green-600">{paidInvoices}</p>
+              <p className="text-2xl font-bold text-green-600">
+                {paidInvoices}
+              </p>
             </div>
             <div className="flex flex-col items-center text-center">
               <h3 className="text-gray-600 font-semibold">Total Amount</h3>
-              <p className="text-2xl font-bold text-blue-600">₹{totalAmount.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-blue-600">
+                ₹{totalAmount.toLocaleString()}
+              </p>
             </div>
           </div>
 
@@ -691,22 +790,41 @@ export default function Dashboard() {
               <thead className="bg-blue-50 border-b">
                 <tr>
                   <th className="px-6 py-3 text-gray-700 font-semibold">#</th>
-                  <th className="px-6 py-3 text-gray-700 font-semibold">Client</th>
-                  <th className="px-6 py-3 text-gray-700 font-semibold">Date</th>
-                  <th className="px-6 py-3 text-gray-700 font-semibold">Total</th>
-                  <th className="px-6 py-3 text-gray-700 font-semibold">Status</th>
-                  <th className="px-6 py-3 text-gray-700 font-semibold text-center">Action</th>
+                  <th className="px-6 py-3 text-gray-700 font-semibold">
+                    Client
+                  </th>
+                  <th className="px-6 py-3 text-gray-700 font-semibold">
+                    Date
+                  </th>
+                  <th className="px-6 py-3 text-gray-700 font-semibold">
+                    Total
+                  </th>
+                  <th className="px-6 py-3 text-gray-700 font-semibold">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-gray-700 font-semibold text-center">
+                    Action
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {filteredInvoices.map((invoice, i) => (
-                  <tr key={invoice._id || i} className="hover:bg-gray-100 transition-all">
+                  <tr
+                    key={invoice._id || i}
+                    className="hover:bg-gray-100 transition-all"
+                  >
                     <td className="px-6 py-3">{i + 1}</td>
-                    <td className="px-6 py-3 font-medium">{invoice.client?.name}</td>
-                    <td className="px-6 py-3">
-                      {invoice.createdAt ? new Date(invoice.createdAt).toLocaleDateString() : "N/A"}
+                    <td className="px-6 py-3 font-medium">
+                      {invoice.client?.name}
                     </td>
-                    <td className="px-6 py-3 font-semibold">₹{(invoice.total || 0).toLocaleString()}</td>
+                    <td className="px-6 py-3">
+                      {invoice.createdAt
+                        ? new Date(invoice.createdAt).toLocaleDateString()
+                        : "N/A"}
+                    </td>
+                    <td className="px-6 py-3 font-semibold">
+                      ₹{(invoice.total || 0).toLocaleString()}
+                    </td>
                     <td
                       className={`px-6 py-3 font-semibold ${
                         invoice.status?.toLowerCase() === "paid"
@@ -740,15 +858,34 @@ export default function Dashboard() {
           <div className="bg-white rounded-2xl w-[700px] max-h-[90vh] overflow-y-auto p-6 shadow-xl">
             <h2 className="text-2xl font-bold mb-4">Invoice Details</h2>
             <div className="space-y-1 mb-4">
-              <p><b>Client Name:</b> {selectedInvoice.client?.name || "N/A"}</p>
-              <p><b>Email:</b> {selectedInvoice.client?.email || "N/A"}</p>
-              <p><b>Phone:</b> {selectedInvoice.client?.phone || "N/A"}</p>
-              <p><b>Address:</b> {selectedInvoice.client?.address || "N/A"}</p>
+              <p>
+                <b>Client Name:</b> {selectedInvoice.client?.name || "N/A"}
+              </p>
+              <p>
+                <b>Email:</b> {selectedInvoice.client?.email || "N/A"}
+              </p>
+              <p>
+                <b>Phone:</b> {selectedInvoice.client?.phone || "N/A"}
+              </p>
+              <p>
+                <b>Address:</b> {selectedInvoice.client?.address || "N/A"}
+              </p>
             </div>
-            <p><b>Status:</b> {selectedInvoice.status}</p>
-            <p><b>Due Date:</b> {selectedInvoice.dueDate ? new Date(selectedInvoice.dueDate).toLocaleDateString() : "N/A"}</p>
-            <p><b>Total:</b> {selectedInvoice.currency} {selectedInvoice.total}</p>
-            <p><b>Notes:</b> {selectedInvoice.notes}</p>
+            <p>
+              <b>Status:</b> {selectedInvoice.status}
+            </p>
+            <p>
+              <b>Due Date:</b>{" "}
+              {selectedInvoice.dueDate
+                ? new Date(selectedInvoice.dueDate).toLocaleDateString()
+                : "N/A"}
+            </p>
+            <p>
+              <b>Total:</b> {selectedInvoice.currency} {selectedInvoice.total}
+            </p>
+            <p>
+              <b>Notes:</b> {selectedInvoice.notes}
+            </p>
 
             <div className="flex justify-end gap-3 mt-6">
               <button

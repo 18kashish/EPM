@@ -308,12 +308,6 @@
 
 
 
-
-
-
-
-
-
 import React, { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import axios from "axios";
@@ -332,12 +326,16 @@ export default function Invoice() {
     status: "",
     date: new Date().toISOString().split("T")[0],
     dueDate: "",
-    currency: "NGN",
+    currency: "INR",
     taxRate: 18, // Default GST 18%
     notes: "",
   });
 
-  const [items, setItems] = useState([{ name: "", qty: 0, price: 0, discount: 0 }]);
+  const [company, setCompany] = useState("TAS"); // Default selected company
+  const [items, setItems] = useState([
+  { name: "", qty: 0, price: 0, discount: 0, type: "Manual Generated" },
+]);
+
   const [loading, setLoading] = useState(false);
 
   // 🧮 Calculations
@@ -345,23 +343,28 @@ export default function Invoice() {
     (sum, item) => sum + item.qty * item.price * (1 - item.discount / 100),
     0
   );
-
   const gst = (subtotal * invoice.taxRate) / 100;
-  const total = subtotal - gst; // ✅ GST SUBTRACTED from amount
+  const total = subtotal - gst;
 
-  // Item change handlers
+  // 🖼️ Company logos
+  const companyLogos = {
+    TAS: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRALHKUOmkKn3hiy3rSCE0ZjWhK_dDFoD_xbg&s",
+    Avsar: "https://avsar.digital/wp-content/uploads/2024/08/Avsar-logo.png",
+    XYZ: "https://upload.wikimedia.org/wikipedia/commons/d/d8/Placeholder_logo.png",
+  };
+
+  // Handlers
   const handleChange = (i, field, value) => {
     const updated = [...items];
     updated[i][field] = value;
     setItems(updated);
   };
 
-  const addItem = () =>
-    setItems([...items, { name: "", qty: 0, price: 0, discount: 0 }]);
+ const addItem = () =>
+  setItems([...items, { name: "", qty: 0, price: 0, discount: 0, type: "Manual Generated" }]);
 
   const removeItem = (i) => setItems(items.filter((_, idx) => idx !== i));
 
-  // 💾 Save Invoice
   const handleSave = async () => {
     if (!invoice.customer) {
       alert("Please enter a customer name before saving.");
@@ -385,6 +388,7 @@ export default function Invoice() {
         subtotal,
         gst,
         total,
+        company,
         status: invoice.status || "Pending",
         creator: [userId],
         client: clientObj,
@@ -410,14 +414,47 @@ export default function Invoice() {
       <div className="min-h-screen bg-gray-100 py-10">
         <main className="flex justify-center items-start px-4">
           <div className="bg-white w-full max-w-5xl rounded-2xl shadow-lg p-8 border border-gray-200">
+
+            {/* 🔹 Dynamic Heading with Logo */}
+            <div className="flex justify-center items-center gap-4 mb-10">
+              <h1 className="text-4xl font-extrabold text-gray-800">
+                Generate Invoice for{" "}
+                <span className="text-blue-600">{company}</span>
+              </h1>
+
+              {company && (
+                <img
+                  src={companyLogos[company]}
+                  alt={`${company} logo`}
+                  className="w-16 h-12 object-contain rounded-md border border-gray-200 bg-white shadow-sm"
+                />
+              )}
+            </div>
+
             {/* Header */}
             <div className="flex justify-between items-center border-b pb-4 mb-8">
               <div>
                 <h2 className="text-3xl font-bold text-gray-800">Invoice</h2>
                 <p className="text-sm text-gray-500 mt-1">
-                  Invoice #: <b>Auto Generated</b>
+                  Invoice #: <b>Manual Generated</b>
                 </p>
+
+                {/* 🔹 Company Selector */}
+                <div className="mt-3 flex items-center gap-3">
+                  <select
+                    value={company}
+                    onChange={(e) => setCompany(e.target.value)}
+                    className="border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="TAS">TAS</option>
+                    <option value="Avsar">Avsar</option>
+                    <option value="XYZ">XYZ</option>
+                  </select>
+
+               
+                </div>
               </div>
+
               <div className="text-right">
                 <p className="text-gray-500 text-sm uppercase">Status</p>
                 <p
@@ -443,33 +480,25 @@ export default function Invoice() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <input
                   value={invoice.customer}
-                  onChange={(e) =>
-                    setInvoice({ ...invoice, customer: e.target.value })
-                  }
+                  onChange={(e) => setInvoice({ ...invoice, customer: e.target.value })}
                   placeholder="Customer name"
                   className="border border-gray-300 rounded-md w-full p-2 focus:ring-2 focus:ring-blue-500"
                 />
                 <input
                   value={invoice.email}
-                  onChange={(e) =>
-                    setInvoice({ ...invoice, email: e.target.value })
-                  }
+                  onChange={(e) => setInvoice({ ...invoice, email: e.target.value })}
                   placeholder="Email address"
                   className="border border-gray-300 rounded-md w-full p-2 focus:ring-2 focus:ring-blue-500"
                 />
                 <input
                   value={invoice.phone}
-                  onChange={(e) =>
-                    setInvoice({ ...invoice, phone: e.target.value })
-                  }
+                  onChange={(e) => setInvoice({ ...invoice, phone: e.target.value })}
                   placeholder="Phone number"
                   className="border border-gray-300 rounded-md w-full p-2 focus:ring-2 focus:ring-blue-500"
                 />
                 <input
                   value={invoice.address}
-                  onChange={(e) =>
-                    setInvoice({ ...invoice, address: e.target.value })
-                  }
+                  onChange={(e) => setInvoice({ ...invoice, address: e.target.value })}
                   placeholder="Customer address"
                   className="border border-gray-300 rounded-md w-full p-2 focus:ring-2 focus:ring-blue-500"
                 />
@@ -477,75 +506,90 @@ export default function Invoice() {
             </div>
 
             {/* Items Table */}
-            <div className="overflow-x-auto mb-8">
-              <table className="w-full border-collapse text-sm">
-                <thead className="bg-blue-50 text-gray-700 uppercase text-xs font-semibold border-b">
-                  <tr>
-                    <th className="p-3 text-left">Item</th>
-                    <th className="p-3 text-center">Qty</th>
-                    <th className="p-3 text-center">Price</th>
-                    <th className="p-3 text-center">Disc(%)</th>
-                    <th className="p-3 text-center">Amount</th>
-                    <th className="p-3 text-center">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item, i) => (
-                    <tr key={i} className="border-b hover:bg-gray-50">
-                      <td className="p-2">
-                        <input
-                          value={item.name}
-                          onChange={(e) => handleChange(i, "name", e.target.value)}
-                          placeholder="Item description"
-                          className="border border-gray-300 rounded-md p-2 w-full"
-                        />
-                      </td>
-                      <td className="p-2 text-center">
-                        <input
-                          type="number"
-                          value={item.qty}
-                          onChange={(e) =>
-                            handleChange(i, "qty", parseFloat(e.target.value))
-                          }
-                          className="border border-gray-300 rounded-md p-2 w-16 text-center"
-                        />
-                      </td>
-                      <td className="p-2 text-center">
-                        <input
-                          type="number"
-                          value={item.price}
-                          onChange={(e) =>
-                            handleChange(i, "price", parseFloat(e.target.value))
-                          }
-                          className="border border-gray-300 rounded-md p-2 w-20 text-center"
-                        />
-                      </td>
-                      <td className="p-2 text-center">
-                        <input
-                          type="number"
-                          value={item.discount}
-                          onChange={(e) =>
-                            handleChange(i, "discount", parseFloat(e.target.value))
-                          }
-                          className="border border-gray-300 rounded-md p-2 w-16 text-center"
-                        />
-                      </td>
-                      <td className="p-2 text-center text-gray-700 font-medium">
-                        {(item.qty * item.price * (1 - item.discount / 100)).toFixed(2)}
-                      </td>
-                      <td className="p-2 text-center">
-                        <button
-                          onClick={() => removeItem(i)}
-                          className="text-red-500 hover:text-red-700"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {/* Items Table */}
+<div className="overflow-x-auto mb-8">
+  <table className="w-full border-collapse text-sm">
+    <thead className="bg-blue-50 text-gray-700 uppercase text-xs font-semibold border-b">
+      <tr>
+        <th className="p-3 text-left">Item</th>
+        <th className="p-3 text-center">Qty</th>
+        <th className="p-3 text-center">Price</th>
+        <th className="p-3 text-center">Disc(%)</th>
+        <th className="p-3 text-center">Type</th>
+        <th className="p-3 text-center">Amount</th>
+        <th className="p-3 text-center">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {items.map((item, i) => (
+        <tr key={i} className="border-b hover:bg-gray-50">
+          <td className="p-2">
+            <input
+              value={item.name}
+              onChange={(e) => handleChange(i, "name", e.target.value)}
+              placeholder="Item description"
+              className="border border-gray-300 rounded-md p-2 w-full"
+            />
+          </td>
+          <td className="p-2 text-center">
+            <input
+              type="number"
+              value={item.qty}
+              onChange={(e) =>
+                handleChange(i, "qty", parseFloat(e.target.value))
+              }
+              className="border border-gray-300 rounded-md p-2 w-16 text-center"
+            />
+          </td>
+          <td className="p-2 text-center">
+            <input
+              type="number"
+              value={item.price}
+              onChange={(e) =>
+                handleChange(i, "price", parseFloat(e.target.value))
+              }
+              className="border border-gray-300 rounded-md p-2 w-20 text-center"
+            />
+          </td>
+          <td className="p-2 text-center">
+            <input
+              type="number"
+              value={item.discount}
+              onChange={(e) =>
+                handleChange(i, "discount", parseFloat(e.target.value))
+              }
+              className="border border-gray-300 rounded-md p-2 w-16 text-center"
+            />
+          </td>
+
+          {/* 🔹 New Type Column */}
+          <td className="p-2 text-center">
+            <select
+              value={item.type || "Manual Generated"}
+              onChange={(e) => handleChange(i, "type", e.target.value)}
+              className="border border-gray-300 rounded-md p-2 text-center"
+            >
+              <option value="Manual Generated">Manual Generated</option>
+              <option value="Auto Generated">Auto Generated</option>
+            </select>
+          </td>
+
+          <td className="p-2 text-center text-gray-700 font-medium">
+            {(item.qty * item.price * (1 - item.discount / 100)).toFixed(2)}
+          </td>
+          <td className="p-2 text-center">
+            <button
+              onClick={() => removeItem(i)}
+              className="text-red-500 hover:text-red-700"
+            >
+              <Trash2 size={18} />
+            </button>
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>
 
             {/* Add Item Button */}
             <button
@@ -589,9 +633,7 @@ export default function Invoice() {
                 <input
                   type="date"
                   value={invoice.dueDate}
-                  onChange={(e) =>
-                    setInvoice({ ...invoice, dueDate: e.target.value })
-                  }
+                  onChange={(e) => setInvoice({ ...invoice, dueDate: e.target.value })}
                   className="border border-gray-300 rounded-md w-full p-2 focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -604,10 +646,9 @@ export default function Invoice() {
                   }
                   className="border border-gray-300 rounded-md w-full p-2 focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="NGN">NGN</option>
+                  <option value="INR">INR</option>
                   <option value="USD">USD</option>
                   <option value="EUR">EUR</option>
-                  <option value="INR">INR</option>
                 </select>
               </div>
               <div>
